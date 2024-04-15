@@ -1,103 +1,104 @@
-import pandas as pd
 import plotly.graph_objects as go
-import easygui
-import os
 import numpy as np
 from time import sleep
 import random
 
 
-class RoboTrading:
-    def __init__(self, file_path):
-        self.file_path = file_path
+class AnaliseDados:
+    def __init__(self, local_path, df):
+        self.localpath = local_path
+        self.df = df
+        return
 
-
-    def system_messages(self, message):
-        self.message = message
-        sleep(3)
-        if not os.name == 'nt':
-            os.system('clear')
-        else:
-            os.system('cls')
-        return print(f'Runing module ---> {message}')
-
-    def creat_dataframe(self):
-        self.df = pd.read_csv(self.file_path)
+    def mostra_dataset(self):
         print(self.df.head())
-    
-    def candlestick_view(self):
-        self.price = self.df['Close'].values
-        fig = go.Figure(
-            # O Parametro data candlestick é uma lista
+
+    # Aqui é usado a biblioteca 'Go', é necessário usar uma variavel que
+    # chama a classe Figure, dentro da classe Figure, é necessário colocar os dados "data", que é uma lista de agumentos junto com a classe Candlestick
+
+    def mostra_candlestisck(self):
+        figura = go.Figure(
             data= [
                 go.Candlestick(
                     x = self.df['Date'],
                     open = self.df['Open'],
                     high = self.df['High'],
-                    low = self.df['Low'],
-                    close = self.df['Close'],
+                    low  = self.df['Low'],
+                    close = self.df['Close']
                 )
-            ],
+            ]
         )
-        fig.show()
+        figura.show()
 
-    def q_learning_configure(self):
-        print('\nQ-Learning hyperparameters have been configured.')
-        self.episodes_num = 1000
+class Robozin(AnaliseDados):
+    
+    def __init__(self, local_path, df):
+        super().__init__(local_path, df)
+
+    def config_qlearning(self):
+        self.num_epsodios = 1000
         self.alfa = 0.1
-        self.gama = 0.00
+        self.gama = 0.99
         self.epsilon = 0.1
 
-    def negociation_ambient(self, initial_balance):
-        self.initial_balance = initial_balance
+    def ambiente_negociacao(self):
+        self.precos = self.df['Close'].values
+        self.saldo_inicial = 0
+        self.acoes = ['Comprar', 'Vender,' 'Manter']
+        self.num_acoes_inicial = 0
 
-        while not self.initial_balance.isnumeric():
-            print('Não é numero')
-            self.initial_balance = input('Valor inicial: ')
-            continue
+        while True:
+            self.saldo_inicial = input('Digite seu saldo inicial: ')
+            try:
+                if self.saldo_inicial.isnumeric():
+                    self.saldo_inicial = int(self.saldo_inicial)
+                    break
+            except ValueError:
+                print('Valor deve ser numerico! ')
+                continue
 
-        self.stocks = ['Buy', 'Sell', 'Keep']
-        self.quantity_initial_sotcks = 0
+        # print(self.saldo_inicial)
+        # return self.saldo_inicial
+    
+    def executar_acao(self, estado, acao, saldo, num_acoes, preco):
 
-    def exec_stock(self, state, stock, balance, num_stocks, price):
+        if acao == 0:
+            if saldo >= preco:
+                num_acoes += 1
+                saldo -= preco
+        
+        elif acao == 1:
+            if num_acoes > 0:
+                num_acoes -= 1
+                saldo += preco
 
-        # Ação comprar
-        if stock == 0:
-            if balance >= price:
-                num_stocks += 1
-                balance -= price
+        self.lucro = saldo + num_acoes * preco - self.saldo_inicial
 
-        # Ação vender
-        elif stock == 1:
-            if num_stocks > 0:
-                num_stocks -= 1
-                balance += price
+        return(saldo, num_acoes, self.lucro)
 
-        self.profit = balance + num_stocks * price - self.initial_balance
+    def treina_robo(self):
+        q_tabela = np.zeros((len(self.precos), len(self.acoes)))
+        for _ in range(self.num_epsodios):
 
-        return (balance, num_stocks, self.profit)
+        # Define o saldo
+            saldo = self.saldo_inicial
+    
+        # Define o número de ações
+            num_acoes = self.num_acoes_inicial
 
-class TraningRobo(RoboTrading):
-    def __init__(self, file_path):
-        super().__init__(file_path)
+        for i, preco in enumerate(self.precos[:-1]):
+            estado = i
 
-    def exec_training(self):
-        print('Initializing Table Q...')
-        self.table_q = np.zeros(len(self.price), len(self.stocks))
+        # Escolher a ação usando a política epsilon-greedy
+            if np.random.random() < self.epsilon:
+                acao = random.choice(range(len(self.acoes)))
+            else:
+                acao = np.argmax(q_tabela[estado])
 
-        print('Initializing Training')
-        for _ in range(self.episodes_num):
-            
-            self.balance = self.initial_balance
-            num_stocks = self.quantity_initial_sotcks
-            
-            for i, price in enumerate(self.price[:-1]):
+        # Executar a ação e obter a recompensa e o próximo estado
+            saldo, num_acoes, lucro = self.executar_acao(estado, acao, saldo, num_acoes, preco)
+            prox_estado = i + 1
 
-                state = i
+        # Atualizar a tabela Q
+            q_tabela[estado][acao] += self.alfa * (lucro + self.gama * np.max(q_tabela[prox_estado]) - q_tabela[estado][acao])
 
-                if np.random() < self.epsilon:
-                    stock = random.choice(len(self.stocks))
-                else:
-                    stock = np.argmax(self.table_q[self.state])
-                
-                self.balance, num_stocks, self.profit = self.exec_stock(state, stock, num_stocks, price)
